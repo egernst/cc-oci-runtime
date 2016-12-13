@@ -211,6 +211,27 @@ out:
 	return ret;
 }
 
+extern GHashTable* mac_hash;
+
+static gboolean
+check_vf_based_iface(struct cc_oci_net_if_cfg *if_cfg) {
+
+      struct cc_oci_device *d_info = NULL;
+
+      d_info = g_hash_table_lookup(mac_hash, if_cfg->mac_address);
+
+      if (d_info && d_info->bdf) {
+         g_debug ("bdf for the if %s: %s",if_cfg->ifname, d_info->bdf);
+         g_debug ("driver for the if %s: %s",if_cfg->ifname, d_info->driver);
+         if_cfg->bdf = d_info->bdf;
+         if_cfg->device_driver = d_info->driver;
+         if_cfg->vf_based = true;
+         return true;
+      }
+
+     return false;
+}
+
 /*!
  * Helper function for setting/getting MTU for network interface.
  *
@@ -333,6 +354,9 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		 * same mac address prefix for tap interfaces on the host
 		 * side. This method scales to support upto 2^16 networks
 		 */
+
+
+
 		guint8 mac[6] = {0x02, 0x00, 0xCA, 0xFE,
 				(guint8)(index >> 8), (guint8)index};
 		guint tap_index, veth_index, bridge_index;
@@ -365,7 +389,12 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		if( if_cfg->vhostuser_socket_path != NULL)
 			continue;
 
-
+		/* If we are dealing with a virtual function based SRIOV
+		 * interface, we do not need to setup anything -- skip tap
+		 * setup.
+		 */
+                if (check_vf_based_iface(if_cfg))
+			continue;
 
 		if (!cc_oci_tap_create(if_cfg->tap_device)) {
 			goto out;
@@ -410,6 +439,29 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 	return true;
 out:
 	return false;
+}
+
+JsonObject *
+cc_oci_network_devices_to_json (const struct cc_oci_config *config)
+{
+        JsonObject *device = NULL;
+        int index = 0;
+        struct cc_oci_net_if_cfg *if_cfg = NULL;
+
+
+        for (index=0; index<g_slist_length(config->net.interfaces); index++) {
+                if_cfg = (struct cc_oci_net_if_cfg *)
+                        g_slist_nth_data(config->net.interfaces, index);
+
+                if (if_cfg->vf_based == true) {
+                        g_debug("interface %s is vf based vf: bdf %s driver %s",if_cfg->ifname, 
+                               if_cfg->bdf, if_cfg->device_driver);  
+                        device = json_object_new ();
+                        json_object_set_string_member (device, "bdf", if_cfg->bdf);
+                        json_object_set_string_member (device, "driver", if_cfg->device_driver);
+                }
+        }
+        return device;
 }
 
 /*!
