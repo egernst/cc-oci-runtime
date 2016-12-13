@@ -1628,6 +1628,12 @@ cc_oci_config_update (struct cc_oci_config *config,
 		g_free_if_set (state->process);
 	}
 
+        if (state->devices) {
+               config->devices = state->devices;
+               state->devices = NULL;
+               g_debug ("cor non-null devices from state");
+        }
+
 	if (state->console) {
 		config->console = state->console;
 		state->console = NULL;

@@ -24,6 +24,7 @@
 #include "config.h"
 #include "state.h"
 #include "oci-config.h"
+#include "hypervisor.h"
 
 #include <errno.h>
 #include <glib/gstdio.h>
@@ -155,6 +156,7 @@ handle_command_stop (const struct subcommand *sub,
 	gboolean           ret;
 	GNode*             root = NULL;
 	gchar             *cgroup_dir = NULL;
+        guint		  index;
 
 	g_assert (sub);
 	g_assert (config);
@@ -204,9 +206,27 @@ handle_command_stop (const struct subcommand *sub,
 	}
 
 	ret = cc_oci_stop (config, state);
+
+        if (state->devices) {
+                // loading appropriate drivers on the devices
+                g_debug ("loading drivers on the devices that pass-thru'ed");
+                for (index=0; index<g_slist_length(state->devices); index++) {
+                        struct cc_oci_device* device = (struct cc_oci_device *)
+                               g_slist_nth_data(state->devices, index);
+
+                        g_debug ("binding device %s to host",device->bdf);
+                        cc_oci_bind_host(device);
+                // brute-force hacks here for changing the interface to child process network namespace
+                        g_debug ("switching  device %s to container",device->bdf);
+                        cc_oci_switch_iface_to_container(device, state->pid);
+                }
+
+        }
+
 	if (! ret) {
 		goto out;
 	}
+
 
 	ret = true;
 

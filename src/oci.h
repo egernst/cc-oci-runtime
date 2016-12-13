@@ -359,11 +359,21 @@ struct cc_oci_net_if_cfg {
 	/** mtu of interface **/
 	unsigned int mtu;
 
+	/** Flag indicated interface is a virtual function */
+        gboolean vf_based;
+
+	/** BDF associated with this VF device */
+        gchar *bdf;
+
+	/** device driver associated with this VF device */
+        gchar *device_driver;
+
 	/** List of IPv4 addresses on the interface */
 	GSList  *ipv4_addrs;
 
 	/** List of IPv6 addresses on the interface */
 	GSList  *ipv6_addrs;
+
 };
 
 /** cc-specific IPv4 configuration data. */
@@ -422,6 +432,8 @@ struct oci_state {
 	 * so there is no \c oci_cfg_mount type.
 	 */
 	GSList          *mounts;
+
+        GSList          *devices;
 
         /** List of \ref oci_cfg_annotation annotations.
          *
@@ -561,6 +573,11 @@ struct cc_pod {
 	GSList   *rootfs_mounts;
 };
 
+struct cc_oci_device {
+        gchar *bdf;
+        gchar *driver;
+};
+
 /** The main object holding all configuration data.
  *
  * \note The main user of this object is "start" - other commands
@@ -579,6 +596,8 @@ struct cc_oci_config {
 
 	/** Network configuration. */
 	struct cc_oci_net_cfg           net;
+
+        GSList *devices;
 
 	/** Container-specific state. */
 	struct cc_oci_container_state  state;
