@@ -31,6 +31,7 @@
 
 #include "oci.h"
 #include "util.h"
+#include "networking.h"
 #include "hypervisor.h"
 #include "common.h"
 
@@ -107,6 +108,43 @@ out:
 	return g_strdup("");
 }
 
+/*
+ *
+ *
+ */
+#define DPDK_CMDLINE_OBJ "memory-backend-file,id=dpdkmem,size=2048M,mem-path=/dev/hugepages,share=on,prealloc=on"
+#define DPDK_CMDLINE_NUMA "node,memdev=dpdkmem"
+#define DPDK_CMDLINE_CHAR "socket,id=char1,path=/run/openvswitch/ovd_%s"
+#define DPDK_CMDLINE_NETD "type=vhost-user,id=mynet1,chardev=char1,vhostforce"
+#define DPDK_CMDLINE_DEV  "virtio-net-pci,netdev=mynet1,mac=%s"
+
+static gchar *
+cc_oci_expand_ovsdpdk_chardev_params(struct cc_oci_net_if_cfg *if_cfg) {
+	struct cc_oci_net_ipv4_cfg *ipv4_cfg = NULL;
+	gchar *ovs_port_path = NULL;
+	guint index = 0;
+
+	//
+	// Need to append the interface's IP in order to identify the full
+	// OVS port path.  I don't expect that there'd be multiple IPs
+	// associated wit hthe interface, but to be safe, walking through the
+	// list and double checking that the file exists on the system.
+	//
+
+	for (index=0; index<g_slist_length(if_cfg->ipv4_addrs); index++) {
+		ipv4_cfg = (struct cc_oci_net_ipv4_cfg *)
+			g_slist_nth_data(if_cfg->ipv4_addrs, index);
+		ovs_port_path = g_strdup_printf(OVS_PORT_PATH, ipv4_cfg->ip_address);
+
+		if (g_file_test (ovs_port_path, G_FILE_TEST_EXISTS)) {
+			// this is the match
+			return g_strdup_printf(DPDK_CMDLINE_CHAR, ipv4_cfg->ip_address);
+		}
+	}
+
+	return g_strdup("");
+}
+
 /*!
  * Append qemu options for networking
  *
@@ -119,6 +157,8 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 {
 	gchar *netdev_params = NULL;
 	gchar *net_device_params = NULL;
+	gchar *ovsdpdk_params = NULL;
+	struct cc_oci_net_if_cfg *if_cfg = NULL;
 
 	if (! (config && additional_args)) {
 		return;
@@ -128,13 +168,43 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 		g_ptr_array_add(additional_args, g_strdup("-net\nnone\n"));
 	} else {
 		for (guint index = 0; index < g_slist_length(config->net.interfaces); index++) {
-			netdev_params = cc_oci_expand_netdev_cmdline(config, index);
-			net_device_params = cc_oci_expand_net_device_cmdline(config, index);
 
-			g_ptr_array_add(additional_args, g_strdup("-netdev"));
-			g_ptr_array_add(additional_args, netdev_params);
-			g_ptr_array_add(additional_args, g_strdup("-device"));
-			g_ptr_array_add(additional_args, net_device_params);
+			if_cfg = (struct cc_oci_net_if_cfg *)
+				g_slist_nth_data(config->net.interfaces, index);
+
+
+			/*
+			 * OVS-DPDK is a special case which requires additional
+			 * parameters
+			 */
+			if (is_interface_ovs(if_cfg)) {
+
+				g_ptr_array_add(additional_args, g_strdup("-chardev"));
+				ovsdpdk_params = cc_oci_expand_ovsdpdk_chardev_params(if_cfg);
+				g_ptr_array_add(additional_args, ovsdpdk_params);
+
+				g_ptr_array_add(additional_args, g_strdup("-netdev"));
+				g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_NETD));
+
+				g_ptr_array_add(additional_args, g_strdup("-device"));
+				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_DEV,if_cfg->mac_address));
+
+				g_ptr_array_add(additional_args, g_strdup("-object"));
+				g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_OBJ));
+
+				g_ptr_array_add(additional_args, g_strdup("-numa"));
+				g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_NUMA));
+
+			} else {
+
+				netdev_params = cc_oci_expand_netdev_cmdline(config, index);
+				net_device_params = cc_oci_expand_net_device_cmdline(config, index);
+				g_ptr_array_add(additional_args, g_strdup("-netdev"));
+				g_ptr_array_add(additional_args, netdev_params);
+				g_ptr_array_add(additional_args, g_strdup("-device"));
+				g_ptr_array_add(additional_args, net_device_params);
+
+			}
 		}
         }
 }

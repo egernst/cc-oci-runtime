@@ -76,6 +76,7 @@
 #include "oci.h"
 #include "util.h"
 #include "netlink.h"
+#include "networking.h"
 
 #define TUNDEV "/dev/net/tun"
 
@@ -209,6 +210,29 @@ out:
 	return ret;
 }
 
+gboolean
+is_interface_ovs(struct cc_oci_net_if_cfg* if_cfg) {
+	gchar *ovs_port_path = NULL;
+	guint index = 0;
+	struct cc_oci_net_ipv4_cfg *ipv4_cfg = NULL;
+
+	//check to see that a OVS port exists which
+	//has a matching interface's IP appended to it:
+	for (index=0; index<g_slist_length(if_cfg->ipv4_addrs); index++) {
+		ipv4_cfg = (struct cc_oci_net_ipv4_cfg *)
+			g_slist_nth_data(if_cfg->ipv4_addrs, index);
+		ovs_port_path = g_strdup_printf(OVS_PORT_PATH, ipv4_cfg->ip_address);
+		g_debug("searching for ovs port: %s", ovs_port_path);
+
+		if (g_file_test (ovs_port_path, G_FILE_TEST_EXISTS)) {
+			g_debug("found ovs port: %s", ovs_port_path);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /*!
  * Helper function for setting/getting MTU for network interface.
  *
@@ -335,6 +359,13 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 
 		if_cfg = (struct cc_oci_net_if_cfg *)
 			g_slist_nth_data(config->net.interfaces, index);
+
+		//We do not need to setup anything for ovs interfaces.
+		//They are already tap interfaces and can be directly connected
+		if (is_interface_ovs(if_cfg)) {
+			g_debug("interface is for OVS");
+			continue;
+		}
 
 		if (!cc_oci_tap_create(if_cfg->tap_device)) {
 			goto out;

@@ -23,6 +23,8 @@
 
 #include "netlink.h"
 
+#define OVS_PORT_PATH "/var/run/openvswitch/ovd_%s"
+
 void cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg);
 
 void cc_oci_net_ipv4_route_free(struct cc_oci_net_ipv4_route *route);
@@ -35,5 +37,7 @@ gchar * cc_net_get_ip_address(const gint family, const void *const sin_addr);
 
 gboolean cc_oci_network_discover(struct cc_oci_config *const config,
 			struct netlink_handle *hndl);
+
+gboolean is_interface_ovs(struct cc_oci_net_if_cfg* if_cfg);
 
 #endif /* _CC_OCI_NETWORKING_H */
