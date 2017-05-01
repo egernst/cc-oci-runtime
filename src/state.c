@@ -836,15 +836,13 @@ static JsonObject *
 cc_oci_devices_to_json (const struct cc_oci_config *config)
 {
         JsonObject *device = NULL;
-        int index = 0;
+        guint i;
         struct cc_oci_device *d_info = NULL;
 
 
-        for (index=0; index<g_slist_length(config->devices); index++) {
+        for (i=0; i < g_slist_length(config->devices); i++) {
                 d_info = (struct cc_oci_device *)
-                        g_slist_nth_data(config->devices, index);
-
-                g_debug ("cor finding devices from the config");
+                        g_slist_nth_data(config->devices, i);
 
                 if (d_info->bdf) {
                    device = json_object_new ();

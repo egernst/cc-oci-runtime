@@ -779,75 +779,164 @@ hash_mac_and_store_bdf(GHashTable* hash, gpointer mac, gpointer bdf)
        g_hash_table_insert(hash, mac, bdf);
 }
 
+static gboolean
+get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
+{
+	gchar *tmp_path = NULL;
+	gchar *buffer = NULL;
+	gchar *sym_link = NULL;
+	GError *link_error = NULL;
+	gchar **tokens = NULL;
+	gchar **driver_tokens = NULL;
+	gchar **mac_from_file = NULL;
+
+	gboolean retval = false;
+	guint idx=0;
+
+	g_debug("\n=== get mac and bdf for device %s", dirname);
+
+	/* grab the sym_link for the given device.  dirname is the
+	 * particular device name @ /sys/class/net/
+	 */
+	tmp_path = g_strdup_printf("/sys/class/net/%s", dirname);
+
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("sym_link read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+
+	/*
+	 * parse the sym_link in order to grab the bdf and make sure it is a
+	 * pci device.  If it is a virtual device, skip out.
+	 */
+	tokens = g_strsplit (sym_link, "/", 8);
+	if (!tokens) {
+		g_debug("sym_link read failure!");
+		goto out;
+	}
+
+	if ( !(g_strcmp0(tokens[3], "virtual")) ) {
+		g_debug("virtual device found");
+		goto out;
+	}
+
+	/* Grab BDF */
+	tmp_path = g_strdup_printf("/sys/class/net/%s/device", sym_link);
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("device relative-path sym_link read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+
+	tokens = g_strsplit (sym_link, "/", 4);
+	if (!tokens || !tokens[3] ) {
+		g_debug("unexpected device path format\n");
+		goto out;
+	}
+
+	/* Grab mac address */
+	tmp_path =  g_strdup_printf("/sys/class/net/%s/address", dirname);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading address file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+
+	mac_from_file = g_strsplit (buffer, "\n", -1);
+	if (!mac_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+
+	/*
+	 * get driver-path.  Symlink of /sys/bus/pci/devices/_/driver
+	 * should resolve to ../../../../bus/pci/drivers/<driver>
+	 */
+	tmp_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	g_debug("driver-path: %s, sym-link: %s", tmp_path, sym_link);
+
+	if (!sym_link || link_error) {
+		g_debug("driver-path sym_link read failure");
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+
+	driver_tokens = g_strsplit(sym_link, "/", 8);
+
+	/* pending the device, the location of driver token will vary, but
+	 * will always be the last token
+	 */
+
+	if (!driver_tokens) {
+		g_debug ("unexpected driver-path format for %s", sym_link);
+		goto out;
+	}
+	while( driver_tokens[idx] )
+		idx++;
+	idx--;
+
+	*mac = g_strdup(mac_from_file[0]);
+	dev_info->bdf = g_strdup(tokens[3]);
+	dev_info->driver = g_strdup(driver_tokens[idx]);
+
+	g_debug("mac: %s, bdf: %s, driver: %s", *mac, dev_info->bdf, dev_info->driver);
+
+	retval = true;
+out:
+	g_strfreev(mac_from_file);
+	g_strfreev(tokens);
+	g_strfreev(driver_tokens);
+	g_free_if_set(buffer);
+	g_free_if_set(tmp_path);
+
+	return retval;
+}
+
+
 void
 build_mac_to_bdf_hash (void)
 {
-      gchar *sym_link = NULL;
-      GError *error = NULL;
-      gchar **tokens = NULL;
-      gchar **driver_tokens = NULL;
+	gchar *mac = NULL;
+	struct cc_oci_device *d_info = NULL;
+	DIR *d;
+	struct dirent *dir;
 
-      mac_hash = g_hash_table_new(g_str_hash, g_str_equal);
+	mac_hash = g_hash_table_new(g_str_hash, g_str_equal);
 
-      struct dirent *d = opendir("/sys/class/net");
+	d = opendir("/sys/class/net");
+	if (!d) {
+		g_debug("Failed to open dir\n");
+		//cleanup and exit TODO
+		goto out;
+	}
 
-      struct dirent *dir;
-      if (d) {
+	while ((dir = readdir(d)) != NULL) {
 
-        while ((dir = readdir(d)) != NULL) {
-             g_debug("cor: %s", dir->d_name);
-             gchar *net_class_path = g_strdup_printf("/sys/class/net/%s/device", dir->d_name);
-             g_debug ("cor: device_path %s", net_class_path);
-             sym_link = g_file_read_link(net_class_path, &error);
+		if (! (g_strcmp0 (dir->d_name, ".") &&
+		    g_strcmp0 (dir->d_name, ".."))) {
+			continue;
+		}
+		d_info = g_malloc0 (sizeof(struct cc_oci_device));
 
-             if (!sym_link) {
-                g_debug ("symlink is null");
-                if (error) g_debug ("reading symlink returned error:%s", error->message);
-                //g_error_free (error);
-                continue;
-             }
+		if (get_mac_and_bdf(dir->d_name, d_info, &mac)) {
+			g_debug("get_mac_and_bdf success: calling hash store");
+			hash_mac_and_store_bdf(mac_hash, mac, d_info);
+		} else {
+			g_free(d_info);
+		}
+	}
 
-             if (sym_link) {
-                g_debug ("cor: device sym link path %s", sym_link);
-                tokens = g_strsplit (sym_link, "/", 4);
-             }
-
-             if (tokens && tokens[3]) {
-
-                 gchar *device_driver_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
-                 g_debug ("cor: driver_path %s", device_driver_path);
-                 sym_link = g_file_read_link(device_driver_path, &error);
-
-                 if (sym_link) {
-                        g_debug ("cor: driver path %s", sym_link);
-                        driver_tokens = g_strsplit (sym_link, "/", 8);
-                 }
-
-                 if (driver_tokens && driver_tokens[7]) { 
-                        g_debug ("hashing mac of iface with bdf %s", tokens[3]);
-                        gchar *content;
-                        gssize length;
-
-                        gchar *address_file_name =  g_strdup_printf("/sys/class/net/%s/address", dir->d_name);
-                        if ( g_file_get_contents (address_file_name, &content, &length, NULL)) {
-                               gchar **mac_from_file = g_strsplit (content, "\n", -1);
-                               g_debug ("mac address of the iface %s - %s", dir->d_name, mac_from_file[0]);
-                               gchar *mac = g_strdup (mac_from_file[0]);
-                               struct cc_oci_device *d_info = g_malloc0 (sizeof(struct cc_oci_device));
-                               d_info->bdf = g_strdup (tokens[3]);
-                               d_info->driver = g_strdup (driver_tokens[7]);
-                               hash_mac_and_store_bdf(mac_hash, mac, d_info);
-
-                        } else {
-                               g_debug("cor: reading address file for %s returned error", dir->d_name);
-                        }
-                 }
-             }
-        }
+	g_debug ("num of mac entries in hash %d", g_hash_table_size(mac_hash));
+out:
+	/* cleanup */
         closedir(d);
-      }
-
-      g_debug ("num of mac entries in hash %d", g_hash_table_size(mac_hash));
 }
 
 /*!

@@ -213,23 +213,29 @@ out:
 
 extern GHashTable* mac_hash;
 
+/*!
+ * Helper function for checking if interface is VF based
+ *
+ * \param if_cfg Network interface configuration struct Interface name.
+ *
+ * \return \c true on success, else \c false.
+ */
 static gboolean
 check_vf_based_iface(struct cc_oci_net_if_cfg *if_cfg) {
 
-      struct cc_oci_device *d_info = NULL;
+	struct cc_oci_device *d_info = NULL;
 
-      d_info = g_hash_table_lookup(mac_hash, if_cfg->mac_address);
+	d_info = g_hash_table_lookup(mac_hash, if_cfg->mac_address);
 
-      if (d_info && d_info->bdf) {
-         g_debug ("bdf for the if %s: %s",if_cfg->ifname, d_info->bdf);
-         g_debug ("driver for the if %s: %s",if_cfg->ifname, d_info->driver);
-         if_cfg->bdf = d_info->bdf;
-         if_cfg->device_driver = d_info->driver;
-         if_cfg->vf_based = true;
-         return true;
-      }
-
-     return false;
+	if (d_info && d_info->bdf) {
+		g_debug ("bdf for the if %s: %s",if_cfg->ifname, d_info->bdf);
+		g_debug ("driver for the if %s: %s",if_cfg->ifname, d_info->driver);
+		if_cfg->bdf = d_info->bdf;
+		if_cfg->device_driver = d_info->driver;
+		if_cfg->vf_based = true;
+		return true;
+	}
+	return false;
 }
 
 /*!
@@ -355,8 +361,6 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		 * side. This method scales to support upto 2^16 networks
 		 */
 
-
-
 		guint8 mac[6] = {0x02, 0x00, 0xCA, 0xFE,
 				(guint8)(index >> 8), (guint8)index};
 		guint tap_index, veth_index, bridge_index;
@@ -445,15 +449,14 @@ JsonObject *
 cc_oci_network_devices_to_json (const struct cc_oci_config *config)
 {
         JsonObject *device = NULL;
-        int index = 0;
+        guint i;
         struct cc_oci_net_if_cfg *if_cfg = NULL;
 
-
-        for (index=0; index<g_slist_length(config->net.interfaces); index++) {
+        for (i=0; i < g_slist_length(config->net.interfaces); i++) {
                 if_cfg = (struct cc_oci_net_if_cfg *)
-                        g_slist_nth_data(config->net.interfaces, index);
+                        g_slist_nth_data(config->net.interfaces, i);
 
-                if (if_cfg->vf_based == true) {
+                if (if_cfg->vf_based) {
                         g_debug("interface %s is vf based vf: bdf %s driver %s",if_cfg->ifname, 
                                if_cfg->bdf, if_cfg->device_driver);  
                         device = json_object_new ();

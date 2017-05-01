@@ -54,7 +54,7 @@ config_net_check_vf(struct cc_oci_config *config, guint index) {
         if_cfg = (struct cc_oci_net_if_cfg *)
                 g_slist_nth_data(config->net.interfaces, index);
 
-        if (if_cfg == NULL) {
+        if (!if_cfg) {
                 goto out;
         }
 
@@ -63,21 +63,37 @@ out:
         return false;
 }
 
+/*!
+ * Switch VF interface to container
+ *
+ * \param d_info \ref cc_oci_device.
+ * \param pid \ ref GPid
+ */
 gboolean
-cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid pid) {
+cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid pid)
+{
 
-        guint Pid = (unsigned) pid;
-        gchar *netns_path = g_strdup_printf("/proc/%d/ns/net", Pid);
+	DIR *d;
+	struct dirent *dir;
+	gboolean retval = false;
+        guint Pid;
+	int fork_pid, status;
+	gchar *netns_path = NULL, *iface_name = NULL, *iface_dir_path = NULL, *pid_str = NULL;
+
+	Pid = (unsigned) pid;
+
+        netns_path = g_strdup_printf("/proc/%d/ns/net", Pid);
+
         g_debug ("cor child netns path %s", netns_path);
 
-        gchar* iface_dir_path = g_strdup_printf("/sys/bus/pci/devices/%s/net", d_info->bdf);
-        struct dirent *d = opendir(iface_dir_path);
+        iface_dir_path = g_strdup_printf("/sys/bus/pci/devices/%s/net", d_info->bdf);
 
+	d = opendir(iface_dir_path);
         if (!d) {
                 g_debug ("opening net dir on bdf %s failed", d_info->bdf);
+		goto out;
         }
 
-        struct dirent *dir;
         while ((dir = readdir(d)) != NULL) {
                 if (g_strcmp0 (dir->d_name, ".") &&
                         g_strcmp0 (dir->d_name, "..")) {
@@ -85,96 +101,128 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid pid) {
                 }
         }
 
-        gchar *iface_name = g_strdup(dir->d_name);
-        g_debug ("iface name for bdf %s - %s", d_info->bdf, iface_name);
+        iface_name = g_strdup(dir->d_name);
+	g_debug ("iface name for bdf %s - %s", d_info->bdf, iface_name);
 
-        int fork_pid, status;
-        fork_pid = fork();
-        if (! fork_pid) {
-           char * arg[4];
+	fork_pid = fork();
+	if (!fork_pid) {
+		/* child process */
+		char * arg[4];
+		pid_str = g_strdup_printf("%d", Pid);
 
-           /*child*/
                 arg[0] = "/usr/bin/cc-sriovdownscript.sh";
-                arg[1] = g_strdup_printf("%d", Pid);
+                arg[1] = pid_str;
                 arg[2] = iface_name;
                 arg[3] = NULL;
                 if (execvp (arg[0], &arg[0]) < 0) {
                         g_debug (" failed to execute the down script");
                 }
                 _exit(1);
-        } else if (fork_pid > 0) {
-                while (waitpid(fork_pid, &status, 0) != fork_pid) {
 
-                }
+        } else if (fork_pid > 0) {
+		/* parent process - wait for exec to finish */
+                while (waitpid(fork_pid, &status, 0) != fork_pid);
+
                 if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                   g_debug("sriodownscript exited good");
+                   g_debug("sriovdownscript existed with success");
                 }
         }
 
-        return true;
+        retval = true;
+out:
+	g_free(iface_dir_path);
+	g_free(iface_name);
+	g_free(netns_path);
+	g_free(pid_str);
+	closedir(d);
+
+	return retval;
 }
-
+/*!
+ * Bind given device to host.
+ *
+ * \param d_info \ref cc_oci_device.
+ */
 gboolean
-cc_oci_bind_host (struct cc_oci_device* d_info) {
+cc_oci_bind_host (struct cc_oci_device* d_info)
+{
         FILE* f;
+        gchar *bind_driver_path = NULL, *unbind_driver_path = NULL;
+	gboolean retval = false;
 
-        gchar* bind_driver_path = g_strdup_printf("/sys/bus/pci/drivers/%s/bind", d_info->driver);
-        gchar* unbind_driver_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind", d_info->bdf);
+	bind_driver_path = g_strdup_printf("/sys/bus/pci/drivers/%s/bind",
+				d_info->driver);
+	unbind_driver_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind",
+				d_info->bdf);
         g_debug ("driver path for binding %s %s", d_info->bdf, bind_driver_path);
 
-        f = fopen (unbind_driver_path, "w");
+        f = fopen(unbind_driver_path, "w");
         if (!f) {
-           g_debug ("cor: opening %s failed", unbind_driver_path);
-           g_debug ("cor: file open error %d", errno);
-           return false;
+		g_debug ("cor: opening %s failed", unbind_driver_path);
+		g_debug ("cor: file open error %d", errno);
+		goto out;
         }
         fprintf(f, "%s", d_info->bdf);
         fclose(f);
 
         f = fopen (bind_driver_path, "w");
         if (!f) {
-           g_debug ("cor: opening %s failed", bind_driver_path);
-           g_debug ("cor: file open error %d", errno);
-           return false;
+		g_debug ("cor: opening %s failed", bind_driver_path);
+		g_debug ("cor: file open error %d", errno);
+		goto out;
         }
         fprintf(f, "%s", d_info->bdf);
         fclose(f);
-        return true;
+
+	retval = true;
+out:
+	g_free(bind_driver_path);
+	g_free(unbind_driver_path);
+        return retval;
 }
 
+/*!
+ * Unbind a given interface from the host and add it as
+ * a vfio pci device for the guest.
+ *
+ * \param config \ref cc_oci_config*
+ * \param index \ref guint
+ *
+ */
 gboolean
-cc_oci_unbind_host(struct cc_oci_config *config, guint index) {
+cc_oci_unbind_host(struct cc_oci_config *config, guint index)
+{
         struct cc_oci_net_if_cfg *if_cfg = NULL;
         FILE* f;
+	gchar *device_path = NULL;
+	gboolean retval = false;
 
         if_cfg = (struct cc_oci_net_if_cfg *)
                 g_slist_nth_data(config->net.interfaces, index);
 
-        if (if_cfg == NULL) {
+        if (!if_cfg)
                 goto out;
-        }
 
-        if ( if_cfg->vf_based == false) {
+        if (!if_cfg->vf_based)
                 goto out;
-        }
-
-        gchar* device_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind", if_cfg->bdf);
-        g_debug ("device_path %s", device_path);
  
         f = fopen("/sys/bus/pci/drivers/vfio-pci/new_id", "w");
         if (!f) {
-           g_debug ("cor: opening vfio-pci/new_id failed");
-           g_debug ("cor: file open error %d", errno);
-           return false;
+		g_debug ("cor: opening vfio-pci/new_id failed");
+		g_debug ("cor: file open error %d", errno);
+		goto out;
         }
         fprintf(f, "8086 1515");
         fclose(f);
 
+	device_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind", if_cfg->bdf);
+        g_debug ("device_path %s", device_path);
+
         f = fopen(device_path, "w");
         if (!f) {
-           g_debug ("cor: opening %s failed", device_path);
-           g_debug ("cor: file open error %d", errno);
-           return false;
+		g_debug ("cor: opening %s failed", device_path);
+		g_debug ("cor: file open error %d", errno);
+		goto out;
         }
         fprintf(f, "%s", if_cfg->bdf);
         fclose(f);
@@ -188,29 +236,35 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index) {
         fprintf(f, "%s", if_cfg->bdf);
         fclose(f);
 
+	retval = true;
 out:
-       return true;
+	g_free(device_path);
+	return retval;
 }
 
 static gchar*
-cc_oci_expand_device_passthru(struct cc_oci_config *config, guint index) {
+cc_oci_expand_device_passthru(struct cc_oci_config *config, guint index)
+{
         struct cc_oci_net_if_cfg *if_cfg = NULL;
+	gchar *expanded_device = NULL;
+	gchar **fields = NULL;
 
         if_cfg = (struct cc_oci_net_if_cfg *)
                 g_slist_nth_data(config->net.interfaces, index);
 
-        if (if_cfg == NULL) {
+        if (!if_cfg) {
                 goto out;
         }
 
-        if ( if_cfg->vf_based == false) {
+        if (!if_cfg->vf_based) {
                 goto out;
         }
 
-        gchar** fields = g_strsplit (if_cfg->bdf, ":", 2);
+        fields = g_strsplit (if_cfg->bdf, ":", 2);
+	expanded_device = g_strdup_printf("vfio-pci,host=%s",fields[1]);
+	g_strfreev(fields);
 
-        return g_strdup_printf("vfio-pci,host=%s",fields[1]);
-
+	return expanded_device;
 out:
 	return g_strdup("");
 }
@@ -373,7 +427,8 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 				g_ptr_array_add(additional_args, g_strdup("-device"));
 				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_DEV,index,if_cfg->mac_address));
 			/*
-			 * Check for SRIOV-VF special case:
+			 * Check for SRIOV-VF special case: if this is a VF interface,
+			 * unbind it from the host and then add command line arguments
 			 */
 			} else if (config_net_check_vf(config, index)) {
 				if (cc_oci_unbind_host(config, index)) {
