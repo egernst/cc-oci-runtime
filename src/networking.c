@@ -445,15 +445,14 @@ JsonObject *
 cc_oci_network_devices_to_json (const struct cc_oci_config *config)
 {
         JsonObject *device = NULL;
-        int index = 0;
+        guint i;
         struct cc_oci_net_if_cfg *if_cfg = NULL;
 
-
-        for (index=0; index<g_slist_length(config->net.interfaces); index++) {
+        for (i=0; i < g_slist_length(config->net.interfaces); i++) {
                 if_cfg = (struct cc_oci_net_if_cfg *)
-                        g_slist_nth_data(config->net.interfaces, index);
+                        g_slist_nth_data(config->net.interfaces, i);
 
-                if (if_cfg->vf_based == true) {
+                if (if_cfg->vf_based) {
                         g_debug("interface %s is vf based vf: bdf %s driver %s",if_cfg->ifname, 
                                if_cfg->bdf, if_cfg->device_driver);  
                         device = json_object_new ();
