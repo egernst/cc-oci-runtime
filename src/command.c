@@ -211,10 +211,10 @@ handle_command_stop (const struct subcommand *sub,
                 /* loading appropriate drivers on the devices */
 		g_debug ("loading drivers on the devices that pass-thru'ed");
                 for (index=0; index<g_slist_length(state->devices); index++) {
-                        struct cc_oci_device* device = (struct cc_oci_device *)
-                               g_slist_nth_data(state->devices, index);
+			struct cc_oci_device* device = (struct cc_oci_device *)
+				g_slist_nth_data(state->devices, index);
+			g_debug ("binding device %s to host",device->bdf);
 
-                        g_debug ("binding device %s to host",device->bdf);
                         cc_oci_bind_host(device);
 
 			/* brute-force hacks for changing the interface to

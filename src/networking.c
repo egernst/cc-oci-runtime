@@ -355,8 +355,6 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		 * side. This method scales to support upto 2^16 networks
 		 */
 
-
-
 		guint8 mac[6] = {0x02, 0x00, 0xCA, 0xFE,
 				(guint8)(index >> 8), (guint8)index};
 		guint tap_index, veth_index, bridge_index;

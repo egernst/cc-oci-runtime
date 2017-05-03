@@ -54,7 +54,7 @@ config_net_check_vf(struct cc_oci_config *config, guint index) {
         if_cfg = (struct cc_oci_net_if_cfg *)
                 g_slist_nth_data(config->net.interfaces, index);
 
-        if (if_cfg == NULL) {
+        if (!if_cfg) {
                 goto out;
         }
 
@@ -63,6 +63,12 @@ out:
         return false;
 }
 
+/*!
+ * Switch VF interface to container
+ *
+ * \param d_info \ref cc_oci_device.
+ * \param pid \ ref GPid
+ */
 gboolean
 cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid pid)
 {
@@ -118,7 +124,7 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid pid)
                 while (waitpid(fork_pid, &status, 0) != fork_pid); 
 
                 if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                   g_debug("sriodownscript exited good");
+                   g_debug("sriovdownscript existed with success");
                 }
         }
 
@@ -130,7 +136,11 @@ out:
 	g_free(pid_str);
 	return retval;	
 }
-
+/*!
+ * Bind given device to host.
+ *
+ * \param d_info \ref cc_oci_device.
+ */
 gboolean
 cc_oci_bind_host (struct cc_oci_device* d_info)
 {
@@ -169,6 +179,14 @@ out:
         return retval;
 }
 
+/*!
+ * Unbind a given interface from the host and add it as
+ * a vfio pci device for the guest.
+ *
+ * \param config \ref cc_oci_config*
+ * \param index \ref guint 
+ *
+ */
 gboolean
 cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 {
@@ -185,7 +203,6 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 
         if (!if_cfg->vf_based)
                 goto out;
-
  
         f = fopen("/sys/bus/pci/drivers/vfio-pci/new_id", "w");
         if (!f) {
@@ -408,7 +425,8 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 				g_ptr_array_add(additional_args, g_strdup("-device"));
 				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_DEV,index,if_cfg->mac_address));
 			/*
-			 * Check for SRIOV-VF special case:
+			 * Check for SRIOV-VF special case: if this is a VF interface,
+			 * unbind it from the host and then add command line arguments
 			 */
 			} else if (config_net_check_vf(config, index)) {
 				if (cc_oci_unbind_host(config, index)) {
