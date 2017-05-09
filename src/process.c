@@ -793,11 +793,14 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	gboolean err;
 	gboolean retval = false;
 
+	g_debug ("get mac and bdf: dirname: %s\n", dirname);
 	/* get device symlink path */
 	tmp_path = g_strdup_printf("/sys/class/net/%s/device", dirname);
 	sym_link = g_file_read_link(tmp_path, &link_error);
-	if( !sym_link || link_error ) {
-		g_debug ("device-path symlink read failure. Path: %s", tmp_path);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("device-path symlink read failure. Path: %s", tmp_path);
+		}
 		goto out;
 	}
 	g_free(tmp_path);
@@ -854,9 +857,7 @@ out:
 	g_strfreev(mac_from_file);
 	g_strfreev(tokens);
 	g_strfreev(driver_tokens);
-	g_free(mac);
 	g_free(buffer);
-	/* get mac address of the interface from file */
 	g_free(tmp_path);
 	
 	return retval;
@@ -881,9 +882,18 @@ build_mac_to_bdf_hash (void)
 	}	
 
 	while ((dir = readdir(d)) != NULL) {
+
+		if (! (g_strcmp0 (dir->d_name, ".") &&
+		    g_strcmp0 (dir->d_name, ".."))) {
+			continue;
+		}
 		d_info = g_malloc0 (sizeof(struct cc_oci_device));
-		get_mac_and_bdf(dir->d_name, d_info, &mac);
-		hash_mac_and_store_bdf(mac_hash, mac, d_info);
+
+		if (get_mac_and_bdf(dir->d_name, d_info, &mac)) {
+			hash_mac_and_store_bdf(mac_hash, mac, d_info);
+		} else {
+			g_free(d_info);
+		}
 	}
 	
 	g_debug ("num of mac entries in hash %d", g_hash_table_size(mac_hash));
