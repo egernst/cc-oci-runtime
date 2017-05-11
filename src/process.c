@@ -792,20 +792,54 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 
 	gboolean err;
 	gboolean retval = false;
+	g_debug("get mac and bdf for device %s\n", dirname);
 
-	g_debug ("get mac and bdf: dirname: %s\n", dirname);
-	/* get device symlink path */
-	tmp_path = g_strdup_printf("/sys/class/net/%s/device", dirname);
+	/* grab the sym_link for the given device.  dirname is the
+	 * particular device name @ /sys/class/net/
+	 */
+	tmp_path = g_strdup_printf("/sys/class/net/%s", dirname);
+
+	sym_link = g_file_read_link(tmp_path, &link_error);
+
+
+	if (!sym_link) {
+		g_debug("no sym link\n");
+		if (link_error) {
+			g_debug ("--->device-path symlink read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+
+	g_debug ("symlink for %s is: %s", dirname, sym_link );
+
+	/*
+	 * parse the symlink in order to grab the bdf and make sure it is a
+	 * pci device.  If it is a virtual device, skip out.
+	 */
+	tokens = g_strsplit (sym_link, "/", 8);
+
+	if (!tokens) {
+		g_debug("symlink read failure!");
+		goto out;
+	}
+
+	if (tokens[3] == "virtual") {
+		g_debug("virtual device found");
+		goto out;
+	}	
+
+
+	/* Grab BDF */
+	tmp_path = g_strdup_printf("%s/device", sym_link);
 	sym_link = g_file_read_link(tmp_path, &link_error);
 	if (!sym_link) {
 		if (link_error) {
-			g_debug ("device-path symlink read failure. Path: %s", tmp_path);
+			g_debug ("device relateiv-path symlink read failure. Path: %s", tmp_path);
 		}
 		goto out;
 	}
 	g_free(tmp_path);
-	
-	/* get bdf from symlink path */
+
 	tokens = g_strsplit (sym_link, "/", 4);
 
 	if (!tokens || !tokens[3] ) {
@@ -813,28 +847,10 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 		goto out;
 	}
 
-	/*
-	 * get driver-path.  Symlink of /sys/bus/pci/devices/_/driver
-	 * should resolve to ../../../../bus/pci/drivers/<driver>
-	 */
-	tmp_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
-	sym_link = g_file_read_link(tmp_path, &link_error);
-
-	if (!sym_link || link_error) {
-		g_debug("driver-path symlink read failure");
-		goto out;
-	}
-	g_free(tmp_path);
-
-	driver_tokens = g_strsplit(sym_link, "/", 8);
-	if (!driver_tokens || !driver_tokens[7]) {
-		g_debug ("unexpected driver-path format\n");
-		goto out;
-	}
-
-	/* Get mac address of interface from address file in sysfs */
+	/* Grab mac address */
 	tmp_path =  g_strdup_printf("/sys/class/net/%s/address", dirname);
-	
+	g_debug("address file path: %s", tmp_path);
+
 	err = g_file_get_contents(tmp_path, &buffer, NULL, NULL);
 	if(err) {
 		g_debug("Reading address file %s returned error", tmp_path);
@@ -844,7 +860,51 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 
 	mac_from_file = g_strsplit (buffer, "\n", -1);
 	if (!mac_from_file) {
-		g_debug ("unexpected file format for address\n");
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+	*mac = g_strdup (mac_from_file[0]);
+
+
+	g_debug ("get mac and bdf: dirname: %s", dirname);
+	/* get device symlink path */
+	tmp_path = g_strdup_printf("/sys/class/net/%s/device", dirname);
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("--->device-path symlink read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+	g_debug ("device: %s :: device-path symlink: %s", tmp_path, sym_link);
+	g_free(tmp_path);
+	
+	/* get bdf from symlink path */
+	tokens = g_strsplit (sym_link, "/", 4);
+	if (!tokens || !tokens[3] ) {
+		g_debug("unexpected device path format\n");
+		goto out;
+	}
+
+
+
+	/*
+	 * get driver-path.  Symlink of /sys/bus/pci/devices/_/driver
+	 * should resolve to ../../../../bus/pci/drivers/<driver>
+	 */
+	tmp_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	g_debug("driver-path: %s, sym-link: %s", tmp_path, sym_link);
+
+	if (!sym_link || link_error) {
+		g_debug("driver-path symlink read failure");
+		goto out;
+	}
+	g_free(tmp_path);
+
+	driver_tokens = g_strsplit(sym_link, "/", 8);
+	if (!driver_tokens || !driver_tokens[7]) {
+		g_debug ("unexpected driver-path format for %s", sym_link);
 		goto out;
 	}
 
