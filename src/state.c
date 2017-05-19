@@ -981,13 +981,11 @@ cc_oci_state_file_create (struct cc_oci_config *config,
           interfaces*/
         device = cc_oci_network_devices_to_json (config);
         if (device) {
-                g_debug ("cor non-null devices array");
                 json_object_set_object_member (obj, "device", device);
         }
 
         device = cc_oci_devices_to_json (config);
         if (device) {
-               g_debug ("cor non-null device from config");
                json_object_set_object_member (obj, "device", device);
         }
 

@@ -225,17 +225,24 @@ check_vf_based_iface(struct cc_oci_net_if_cfg *if_cfg) {
 
 	struct cc_oci_device *d_info = NULL;
 
+	if (!if_cfg) {
+		g_debug ("null if_cfg passed");
+		return false;
+	}
+
 	d_info = g_hash_table_lookup(mac_hash, if_cfg->mac_address);
 
-	if (d_info && d_info->bdf) {
-		g_debug ("bdf for the if %s: %s",if_cfg->ifname, d_info->bdf);
-		g_debug ("driver for the if %s: %s",if_cfg->ifname, d_info->driver);
-		if_cfg->bdf = d_info->bdf;
-		if_cfg->device_driver = d_info->driver;
-		if_cfg->vf_based = true;
-		return true;
-	}
-	return false;
+	if (!d_info)
+		return false;
+
+	if (!d_info->bdf)
+		return false;
+
+	if_cfg->bdf = d_info->bdf;
+	if_cfg->device_driver = d_info->driver;
+	if_cfg->vf_based = true;
+
+	return true;
 }
 
 /*!

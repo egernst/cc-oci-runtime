@@ -771,14 +771,35 @@ cc_free_pointer(gpointer str)
 	g_free(str);
 }
 
+/*
+ * Hash to map a MAC address to a given BDF.  This is populated and used
+ * to identify Virtual Function networking devices which are meant to be
+ * passed to QEMU
+ */
 GHashTable* mac_hash;
 
+/*!
+ * Function to store a BDF value for a given MAC address
+ *
+ * \param hash \ref GHashTable
+ * \param mac \ref gpointer
+ * \param bdf \ ref gpointer
+ */
 void
 hash_mac_and_store_bdf(GHashTable* hash, gpointer mac, gpointer bdf)
 {
        g_hash_table_insert(hash, mac, bdf);
 }
 
+/*!
+ * Helper function get a MAC and BDF for a given network devic
+ *
+ * \param dirname \ref gchar*
+ * \param dev_info \ref cc_oci_device to return BDF and driver info
+ * \param mac \ ref gchar** mac address to return found MAC into
+ *
+ * \return \c true if succesfully found mac/bdf
+ */
 static gboolean
 get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 {
@@ -792,8 +813,6 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 
 	gboolean retval = false;
 	guint idx=0;
-
-	g_debug("\n=== get mac and bdf for device %s", dirname);
 
 	/* grab the sym_link for the given device.  dirname is the
 	 * particular device name @ /sys/class/net/
