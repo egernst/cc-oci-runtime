@@ -232,17 +232,26 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 
 	if (!if_cfg->vf_based)
 		goto out;
- 
-	f = fopen("/sys/bus/pci/drivers/vfio-pci/new_id", "w");
+#define VFIO_NEWID_PATH "/sys/bus/pci/drivers/vfio-pci/new_id"
+#define NIC_DEV_ID_HARDCODE_THIS_IS_BAD "8086 1516"
+	f = fopen(VFIO_NEWID_PATH, "w");
 	if (!f) {
 		g_debug ("cor: opening vfio-pci/new_id failed");
 		g_debug ("cor: file open error %d", errno);
 		goto out;
 	}
-	fprintf(f, "8086 1515");
+	fprintf(f, NIC_DEV_ID_HARDCODE_THIS_IS_BAD);
 	fclose(f);
 
+	g_debug("unbind_host: echo %s > %s", NIC_DEV_ID_HARDCODE_THIS_IS_BAD, VFIO_NEWID_PATH);
+
+#define DEVICEDRIVER_UNBIND "sys/bus/pci/devices/%s/driver/unbind"
 	device_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind", if_cfg->bdf);
+
+	
+	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, device_path);
+
+
 
 	f = fopen(device_path, "w");
 	if (!f) {
@@ -252,8 +261,8 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 	}
 	fprintf(f, "%s", if_cfg->bdf);
 	fclose(f);
-
-	f = fopen("/sys/bus/pci/drivers/vfio-pci/bind", "w");
+#define VFIO_BIND_PATH "/sys/bus/pci/drivers/vfio-pci/bind"
+	f = fopen(VFIO_BIND_PATH, "w");
         if (!f) {
 		g_debug ("cor: opening pci-stub/bind failed");
 		g_debug ("cor: file open error %d", errno);
@@ -261,6 +270,7 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
         }
 	fprintf(f, "%s", if_cfg->bdf);
 	fclose(f);
+	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, VFIO_BIND_PATH);
 
 	retval = true;
 out:
