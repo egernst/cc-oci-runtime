@@ -30,8 +30,9 @@ sudo sudo apt-mark hold docker-engine
 ## Setup the repository for Clear Container
 
 ```
-sudo sh -c "echo 'deb http://download.opensuse.org/repositories/home:/clearlinux:/preview:/clear-containers-2.1/xUbuntu_$(lsb_release -rs)/ /' >> /etc/apt/sources.list.d/cc-oci-runtime.list"
-curl -fsSL http://download.opensuse.org/repositories/home:clearlinux:preview:clear-containers-2.1/xUbuntu_$(lsb_release -rs)/Release.key | sudo apt-key add -
+
+sudo sh -c "echo 'deb http://download.opensuse.org/repositories/home:/egernst:/clear-containers-2.1-poc/xUbuntu_$(lsb_release -rs)/ /' >> /etc/apt/sources.list.d/cc-oci-runtime.list"
+curl -fsSL http://download.opensuse.org/repositories/home:/egernst:/clear-containers-2.1-poc/xUbuntu_$(lsb_release -rs)/Release.key | sudo apt-key add -
 ```
 
 ## Install Clear Containers 2.1
