@@ -242,6 +242,8 @@ check_vf_based_iface(struct cc_oci_net_if_cfg *if_cfg) {
 	if_cfg->device_driver = d_info->driver;
 	if_cfg->vf_based = true;
 
+	g_debug("vf interface found: %s : driver: %s",d_info->bdf,d_info->driver);
+
 	return true;
 }
 

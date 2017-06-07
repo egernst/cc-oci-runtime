@@ -188,6 +188,8 @@ cc_oci_bind_host (struct cc_oci_device* d_info)
 	fprintf(f, "%s", d_info->bdf);
 	fclose(f);
 
+	g_debug("bind-host: echo %s > %s", d_info->bdf, unbind_driver_path);
+
 	f = fopen (bind_driver_path, "w");
 	if (!f) {
 		g_debug ("opening %s failed", bind_driver_path);
@@ -196,6 +198,20 @@ cc_oci_bind_host (struct cc_oci_device* d_info)
 	}
 	fprintf(f, "%s", d_info->bdf);
 	fclose(f);
+
+	g_debug("bind-host: echo %s > %s", d_info->bdf, bind_driver_path);
+
+#define VFIO_RMID_PATH "/sys/bus/pci/drivers/vfio-pci/remove_id"
+#define NIC_DEV_ID_HARDCODE_THIS_IS_BAD "8086 1515"
+	f = fopen(VFIO_RMID_PATH, "w");
+	if (!f) {
+		g_debug ("bind_host: failed to open %s - error: %d", VFIO_RMID_PATH, errno);
+		goto out;
+	}
+	fprintf(f, NIC_DEV_ID_HARDCODE_THIS_IS_BAD);
+	fclose(f);
+
+	g_debug("bind_host: echo %s > %s", NIC_DEV_ID_HARDCODE_THIS_IS_BAD, VFIO_RMID_PATH);
 
 	retval = true;
 out:
@@ -232,40 +248,33 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 
 	if (!if_cfg->vf_based)
 		goto out;
+
 #define VFIO_NEWID_PATH "/sys/bus/pci/drivers/vfio-pci/new_id"
-#define NIC_DEV_ID_HARDCODE_THIS_IS_BAD "8086 1516"
 	f = fopen(VFIO_NEWID_PATH, "w");
 	if (!f) {
-		g_debug ("cor: opening vfio-pci/new_id failed");
-		g_debug ("cor: file open error %d", errno);
+		g_debug ("unbind_host: error opening %s; err: %d", VFIO_NEWID_PATH, errno);
 		goto out;
 	}
 	fprintf(f, NIC_DEV_ID_HARDCODE_THIS_IS_BAD);
 	fclose(f);
-
 	g_debug("unbind_host: echo %s > %s", NIC_DEV_ID_HARDCODE_THIS_IS_BAD, VFIO_NEWID_PATH);
 
-#define DEVICEDRIVER_UNBIND "sys/bus/pci/devices/%s/driver/unbind"
-	device_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind", if_cfg->bdf);
-
-	
-	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, device_path);
-
-
+#define DEVICEDRIVER_UNBIND "/sys/bus/pci/devices/%s/driver/unbind"
+	device_path = g_strdup_printf(DEVICEDRIVER_UNBIND, if_cfg->bdf);
 
 	f = fopen(device_path, "w");
 	if (!f) {
-		g_debug ("cor: opening %s failed", device_path);
-		g_debug ("cor: file open error %d", errno);
+		g_debug ("unbind_host: error opening %s; err: %d", device_path, errno);
 		goto out;
 	}
 	fprintf(f, "%s", if_cfg->bdf);
 	fclose(f);
+	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, device_path);
+
 #define VFIO_BIND_PATH "/sys/bus/pci/drivers/vfio-pci/bind"
 	f = fopen(VFIO_BIND_PATH, "w");
         if (!f) {
-		g_debug ("cor: opening pci-stub/bind failed");
-		g_debug ("cor: file open error %d", errno);
+		g_debug ("unbind_host: error opening %s; err: %d", VFIO_BIND_PATH, errno);
 		goto out;
         }
 	fprintf(f, "%s", if_cfg->bdf);
