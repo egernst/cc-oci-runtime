@@ -810,6 +810,9 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	gchar **tokens = NULL;
 	gchar **driver_tokens = NULL;
 	gchar **mac_from_file = NULL;
+	gchar **device_id_from_file = NULL;
+	gchar **vendor_id_from_file = NULL;
+	gchar **vendor_device_id = NULL;
 
 	gboolean retval = false;
 	guint idx=0;
@@ -858,6 +861,38 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 		g_debug("unexpected device path format\n");
 		goto out;
 	}
+
+	/* Grab device ID */
+	tmp_path = g_strdup_printf("/sys/class/net/%s/device/device", sym_link);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading address file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+	device_id_from_file = g_strsplit (buffer, "\n", -1);
+	if (!device_id_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+	g_debug("device_id: %s", device_id_from_file[0]);
+	
+	
+	/* Grab vendor ID */
+	tmp_path = g_strdup_printf("/sys/class/net/%s/device/vendor", sym_link);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading address file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+	vendor_id_from_file = g_strsplit (buffer, "\n", -1);
+	if (!vendor_id_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+	g_debug("vendor_id: %s", vendor_id_from_file[0]);
+
+	vendor_device_id = g_strdup_printf("%s %s", vendor_id_from_file, device_id_from_file);
+	g_debug("vendor_device_id: %s", vendor_device_id);
 
 	/* Grab mac address */
 	tmp_path =  g_strdup_printf("/sys/class/net/%s/address", dirname);
