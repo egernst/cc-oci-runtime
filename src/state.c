@@ -304,6 +304,12 @@ handle_state_devices_section(GNode* node, struct handler_data* data) {
                 d = g_new0 (struct cc_oci_device, 1);
                 d->bdf = g_strdup ((char *)node->children->data);
                 data->state->devices = g_slist_append(data->state->devices, d);
+        } else if (! g_strcmp0(node->data, "vd_id")) {
+                GSList *l = g_slist_last(data->state->devices);
+                if (l) {
+                        d = (struct cc_oci_device*)l->data;
+                        d->vd_id = g_strdup((char*)node->children->data);
+                }
         } else if (! g_strcmp0(node->data, "driver")) {
                 GSList *l = g_slist_last(data->state->devices);
                 if (l) {
@@ -848,6 +854,7 @@ cc_oci_devices_to_json (const struct cc_oci_config *config)
                    device = json_object_new ();
                    json_object_set_string_member (device, "bdf", d_info->bdf);
                    json_object_set_string_member (device, "driver", d_info->driver);
+                   json_object_set_string_member (device, "vd_id", d_info->vd_id);
                 }
         }
         return device;

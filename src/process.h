@@ -34,6 +34,8 @@ gboolean cc_shim_launch (struct cc_oci_config *config,
 			int *shim_socket_fd,
 			gboolean initial_workload);
 
+void mac_hash_free (void);
+
 GSocketConnection *cc_oci_socket_connection_from_fd (int fd);
 
 #endif /* _CC_OCI_PROCESS_H */

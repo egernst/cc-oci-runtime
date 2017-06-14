@@ -156,7 +156,8 @@ out:
 	return retval;
 }
 /*!
- * Bind given device to host.
+ * Bind given device to host.  This is used to return the device and its
+ * driver setup to original configuration.
  *
  * \param d_info \ref cc_oci_device.
  *
@@ -202,16 +203,15 @@ cc_oci_bind_host (struct cc_oci_device* d_info)
 	g_debug("bind-host: echo %s > %s", d_info->bdf, bind_driver_path);
 
 #define VFIO_RMID_PATH "/sys/bus/pci/drivers/vfio-pci/remove_id"
-#define NIC_DEV_ID_HARDCODE_THIS_IS_BAD "8086 1515"
 	f = fopen(VFIO_RMID_PATH, "w");
 	if (!f) {
 		g_debug ("bind_host: failed to open %s - error: %d", VFIO_RMID_PATH, errno);
 		goto out;
 	}
-	fprintf(f, NIC_DEV_ID_HARDCODE_THIS_IS_BAD);
+	fprintf(f, "%s", d_info->vd_id);
 	fclose(f);
 
-	g_debug("bind_host: echo %s > %s", NIC_DEV_ID_HARDCODE_THIS_IS_BAD, VFIO_RMID_PATH);
+	g_debug("bind_host: echo %s > %s", d_info->vd_id, VFIO_RMID_PATH);
 
 	retval = true;
 out:
@@ -222,7 +222,7 @@ out:
 
 /*!
  * Unbind a given interface from the host and add it as
- * a vfio pci device for the guest.
+ * a vfio pci device for the guest's consumption.
  *
  * \param config \ref cc_oci_config*
  * \param index \ref guint
@@ -255,9 +255,9 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 		g_debug ("unbind_host: error opening %s; err: %d", VFIO_NEWID_PATH, errno);
 		goto out;
 	}
-	fprintf(f, NIC_DEV_ID_HARDCODE_THIS_IS_BAD);
+	fprintf(f, "%s", if_cfg->vd_id);
 	fclose(f);
-	g_debug("unbind_host: echo %s > %s", NIC_DEV_ID_HARDCODE_THIS_IS_BAD, VFIO_NEWID_PATH);
+	g_debug("unbind_host: echo %s > %s", if_cfg->vd_id, VFIO_NEWID_PATH);
 
 #define DEVICEDRIVER_UNBIND "/sys/bus/pci/devices/%s/driver/unbind"
 	device_path = g_strdup_printf(DEVICEDRIVER_UNBIND, if_cfg->bdf);
@@ -505,6 +505,9 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 			g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_NUMA));
 		}
         }
+
+	/* the mac/bdf hash is no longer necessary, since networking is now setup */
+
 }
 
 /*!

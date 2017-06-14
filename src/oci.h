@@ -368,6 +368,9 @@ struct cc_oci_net_if_cfg {
 	/** device driver associated with this VF device */
         gchar *device_driver;
 
+	/** vendor and device ID associated with this VF */
+	gchar *vd_id;
+
 	/** List of IPv4 addresses on the interface */
 	GSList  *ipv4_addrs;
 
@@ -574,8 +577,14 @@ struct cc_pod {
 };
 
 struct cc_oci_device {
+	/* bdf of device */
         gchar *bdf;
+
+	/* original driver associated with device */
         gchar *driver;
+
+	/* vendor and device ID associated with device */
+        gchar *vd_id;
 };
 
 /** The main object holding all configuration data.

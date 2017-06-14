@@ -77,6 +77,7 @@
 #include "util.h"
 #include "netlink.h"
 #include "networking.h"
+#include "process.h"
 
 #define TUNDEV "/dev/net/tun"
 
@@ -130,6 +131,9 @@ cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg)
 	g_free_if_set (if_cfg->bridge);
 	g_free_if_set (if_cfg->tap_device);
 	g_free_if_set (if_cfg->vhostuser_socket_path);
+	g_free_if_set (if_cfg->bdf);
+	g_free_if_set (if_cfg->device_driver);
+	g_free_if_set (if_cfg->vd_id);
 
 	if (if_cfg->ipv4_addrs) {
 		g_slist_free_full(if_cfg->ipv4_addrs,
@@ -240,9 +244,10 @@ check_vf_based_iface(struct cc_oci_net_if_cfg *if_cfg) {
 
 	if_cfg->bdf = d_info->bdf;
 	if_cfg->device_driver = d_info->driver;
+	if_cfg->vd_id = d_info->vd_id;
 	if_cfg->vf_based = true;
 
-	g_debug("vf interface found: %s : driver: %s",d_info->bdf,d_info->driver);
+	g_debug("vf interface found: %s, vendor/devid id: %s, driver: %s",d_info->bdf, d_info->vd_id, d_info->driver);
 
 	return true;
 }
@@ -359,9 +364,10 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 	guint index = 0;
 	guint j = 0;
 	gchar *vhostuser_port_path = NULL;
+	gboolean retval = false;
 
 	if (config == NULL) {
-		return false;
+		goto out;
 	}
 
 	for (index=0; index<g_slist_length(config->net.interfaces); index++) {
@@ -449,9 +455,12 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		}
 	}
 
-	return true;
+	retval = true;
 out:
-	return false;
+	/* network is created, no longer need mac to BDF hash table */
+	mac_hash_free();		
+
+	return retval;
 }
 
 JsonObject *
@@ -466,11 +475,13 @@ cc_oci_network_devices_to_json (const struct cc_oci_config *config)
                         g_slist_nth_data(config->net.interfaces, i);
 
                 if (if_cfg->vf_based) {
-                        g_debug("interface %s is vf based vf: bdf %s driver %s",if_cfg->ifname, 
-                               if_cfg->bdf, if_cfg->device_driver);  
+                        g_debug("interface %s is vf based vf: bdf: %s, vendor/device id: %s, driver: %s",
+				if_cfg->ifname, if_cfg->bdf,
+				if_cfg->vd_id, if_cfg->device_driver);
                         device = json_object_new ();
                         json_object_set_string_member (device, "bdf", if_cfg->bdf);
                         json_object_set_string_member (device, "driver", if_cfg->device_driver);
+                        json_object_set_string_member (device, "vd_id", if_cfg->vd_id);
                 }
         }
         return device;

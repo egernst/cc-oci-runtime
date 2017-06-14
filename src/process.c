@@ -785,14 +785,16 @@ GHashTable* mac_hash;
  * \param mac \ref gpointer
  * \param bdf \ ref gpointer
  */
-void
+static void
 hash_mac_and_store_bdf(GHashTable* hash, gpointer mac, gpointer bdf)
 {
        g_hash_table_insert(hash, mac, bdf);
 }
 
 /*!
- * Helper function get a MAC and BDF for a given network devic
+ * Helper function to get a MAC and BDF for a given network device.
+ * While parsing the sysfs, also grabbing vendor/device ID and driver
+ * associated with the device
  *
  * \param dirname \ref gchar*
  * \param dev_info \ref cc_oci_device to return BDF and driver info
@@ -804,6 +806,7 @@ static gboolean
 get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 {
 	gchar *tmp_path = NULL;
+	gchar *device_dir_path = NULL;
 	gchar *buffer = NULL;
 	gchar *sym_link = NULL;
 	GError *link_error = NULL;
@@ -812,7 +815,7 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	gchar **mac_from_file = NULL;
 	gchar **device_id_from_file = NULL;
 	gchar **vendor_id_from_file = NULL;
-	gchar **vendor_device_id = NULL;
+	gchar *vendor_device_id = NULL;
 
 	gboolean retval = false;
 	guint idx=0;
@@ -846,15 +849,14 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	}
 
 	/* Grab BDF */
-	tmp_path = g_strdup_printf("/sys/class/net/%s/device", sym_link);
-	sym_link = g_file_read_link(tmp_path, &link_error);
+	device_dir_path = g_strdup_printf("/sys/class/net/%s/device", sym_link);
+	sym_link = g_file_read_link(device_dir_path, &link_error);
 	if (!sym_link) {
 		if (link_error) {
 			g_debug ("device relative-path sym_link read failure. Path: %s", tmp_path);
 		}
 		goto out;
 	}
-	g_free_if_set(tmp_path);
 
 	tokens = g_strsplit (sym_link, "/", 4);
 	if (!tokens || !tokens[3] ) {
@@ -863,9 +865,9 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	}
 
 	/* Grab device ID */
-	tmp_path = g_strdup_printf("/sys/class/net/%s/device/device", sym_link);
+	tmp_path = g_strdup_printf("%s/device", device_dir_path);
 	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
-		g_debug("Reading address file %s returned error", tmp_path);
+		g_debug("Reading file %s returned error", tmp_path);
 		goto out;
 	}
 	g_free_if_set(tmp_path);
@@ -874,13 +876,12 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
 		goto out;
 	}
-	g_debug("device_id: %s", device_id_from_file[0]);
-	
+	g_free(buffer);
 	
 	/* Grab vendor ID */
-	tmp_path = g_strdup_printf("/sys/class/net/%s/device/vendor", sym_link);
+	tmp_path = g_strdup_printf("%s/vendor", device_dir_path);
 	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
-		g_debug("Reading address file %s returned error", tmp_path);
+		g_debug("Reading file %s returned error", tmp_path);
 		goto out;
 	}
 	g_free_if_set(tmp_path);
@@ -889,10 +890,11 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
 		goto out;
 	}
-	g_debug("vendor_id: %s", vendor_id_from_file[0]);
+	g_free(buffer);
 
-	vendor_device_id = g_strdup_printf("%s %s", vendor_id_from_file, device_id_from_file);
-	g_debug("vendor_device_id: %s", vendor_device_id);
+	vendor_device_id = g_strdup_printf("%s %s", vendor_id_from_file[0], device_id_from_file[0]);
+	g_free(device_id_from_file);
+	g_free(vendor_id_from_file);
 
 	/* Grab mac address */
 	tmp_path =  g_strdup_printf("/sys/class/net/%s/address", dirname);
@@ -914,7 +916,6 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	 */
 	tmp_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
 	sym_link = g_file_read_link(tmp_path, &link_error);
-	g_debug("driver-path: %s, sym-link: %s", tmp_path, sym_link);
 
 	if (!sym_link || link_error) {
 		g_debug("driver-path sym_link read failure");
@@ -939,8 +940,9 @@ get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
 	*mac = g_strdup(mac_from_file[0]);
 	dev_info->bdf = g_strdup(tokens[3]);
 	dev_info->driver = g_strdup(driver_tokens[idx]);
+	dev_info->vd_id = vendor_device_id;
 
-	g_debug("mac: %s, bdf: %s, driver: %s", *mac, dev_info->bdf, dev_info->driver);
+	g_debug("mac: %s, bdf: %s, vendor/device id: %s driver: %s", *mac, dev_info->bdf, dev_info->vd_id, dev_info->driver);
 
 	retval = true;
 out:
@@ -953,6 +955,22 @@ out:
 	return retval;
 }
 
+static void
+hash_table_free_entry(gpointer key, gpointer value, gpointer userdata) 
+{
+	g_free(key);
+	g_free(value);
+}
+
+	
+void
+mac_hash_free (void)
+{
+	/* free each bdf/mac entry */
+	g_hash_table_foreach(mac_hash, hash_table_free_entry, NULL);
+	/* remove table */
+	g_hash_table_destroy(mac_hash);
+}
 
 void
 build_mac_to_bdf_hash (void)
@@ -971,6 +989,7 @@ build_mac_to_bdf_hash (void)
 		goto out;
 	}
 
+	g_debug("build mac to BDF hash");
 	while ((dir = readdir(d)) != NULL) {
 
 		if (! (g_strcmp0 (dir->d_name, ".") &&
@@ -980,7 +999,6 @@ build_mac_to_bdf_hash (void)
 		d_info = g_malloc0 (sizeof(struct cc_oci_device));
 
 		if (get_mac_and_bdf(dir->d_name, d_info, &mac)) {
-			g_debug("get_mac_and_bdf success: calling hash store");
 			hash_mac_and_store_bdf(mac_hash, mac, d_info);
 		} else {
 			g_free(d_info);
