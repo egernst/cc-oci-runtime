@@ -778,6 +778,246 @@ cc_free_pointer(gpointer str)
 	g_free(str);
 }
 
+/*
+ * Hash to map a MAC address to a given BDF.  This is populated and used
+ * to identify Virtual Function networking devices which are meant to be
+ * passed to QEMU
+ */
+GHashTable* mac_hash;
+
+/*!
+ * Function to store a BDF value for a given MAC address
+ *
+ * \param hash \ref GHashTable
+ * \param mac \ref gpointer
+ * \param bdf \ ref gpointer
+ */
+static void
+hash_mac_and_store_bdf(GHashTable* hash, gpointer mac, gpointer bdf)
+{
+       g_hash_table_insert(hash, mac, bdf);
+}
+
+/*!
+ * Helper function to get a MAC and BDF for a given network device.
+ * While parsing the sysfs, also grabbing vendor/device ID and driver
+ * associated with the device
+ *
+ * \param dirname \ref gchar*
+ * \param dev_info \ref cc_oci_device to return BDF and driver info
+ * \param mac \ ref gchar** mac address to return found MAC into
+ *
+ * \return \c true if succesfully found mac/bdf
+ */
+static gboolean
+get_mac_and_bdf(gchar *dirname, struct cc_oci_device *dev_info, gchar **mac)
+{
+	gchar *tmp_path = NULL;
+	gchar *device_dir_path = NULL;
+	gchar *buffer = NULL;
+	gchar *sym_link = NULL;
+	GError *link_error = NULL;
+	gchar **tokens = NULL;
+	gchar **driver_tokens = NULL;
+	gchar **mac_from_file = NULL;
+	gchar **device_id_from_file = NULL;
+	gchar **vendor_id_from_file = NULL;
+	gchar *vendor_device_id = NULL;
+
+	gboolean retval = false;
+	guint idx=0;
+
+	/* grab the sym_link for the given device.  dirname is the
+	 * particular device name @ /sys/class/net/
+	 */
+	tmp_path = g_strdup_printf("/sys/class/net/%s", dirname);
+
+	sym_link = g_file_read_link(tmp_path, &link_error);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("sym_link read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+
+	/*
+	 * parse the sym_link in order to grab the bdf and make sure it is a
+	 * pci device.  If it is a virtual device, skip out.
+	 */
+	tokens = g_strsplit (sym_link, "/", 8);
+	if (!tokens) {
+		g_debug("sym_link read failure!");
+		goto out;
+	}
+
+	if ( !(g_strcmp0(tokens[3], "virtual")) ) {
+		g_debug("virtual device found");
+		goto out;
+	}
+
+	/* Grab BDF */
+	device_dir_path = g_strdup_printf("/sys/class/net/%s/device", sym_link);
+	sym_link = g_file_read_link(device_dir_path, &link_error);
+	if (!sym_link) {
+		if (link_error) {
+			g_debug ("device relative-path sym_link read failure. Path: %s", tmp_path);
+		}
+		goto out;
+	}
+
+	tokens = g_strsplit (sym_link, "/", 4);
+	if (!tokens || !tokens[3] ) {
+		g_debug("unexpected device path format\n");
+		goto out;
+	}
+
+	/* Grab device ID */
+	tmp_path = g_strdup_printf("%s/device", device_dir_path);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+	device_id_from_file = g_strsplit (buffer, "\n", -1);
+	if (!device_id_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+	g_free(buffer);
+	
+	/* Grab vendor ID */
+	tmp_path = g_strdup_printf("%s/vendor", device_dir_path);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+	vendor_id_from_file = g_strsplit (buffer, "\n", -1);
+	if (!vendor_id_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+	g_free(buffer);
+
+	vendor_device_id = g_strdup_printf("%s %s", vendor_id_from_file[0], device_id_from_file[0]);
+	g_free(device_id_from_file);
+	g_free(vendor_id_from_file);
+
+	/* Grab mac address */
+	tmp_path =  g_strdup_printf("/sys/class/net/%s/address", dirname);
+	if ( !(g_file_get_contents(tmp_path, &buffer, NULL, NULL)) ) {
+		g_debug("Reading address file %s returned error", tmp_path);
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+
+	mac_from_file = g_strsplit (buffer, "\n", -1);
+	if (!mac_from_file) {
+		g_debug ("unexpected file format for address. buffer: %s\n", buffer);
+		goto out;
+	}
+
+	/*
+	 * get driver-path.  Symlink of /sys/bus/pci/devices/_/driver
+	 * should resolve to ../../../../bus/pci/drivers/<driver>
+	 */
+	tmp_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver", tokens[3]);
+	sym_link = g_file_read_link(tmp_path, &link_error);
+
+	if (!sym_link || link_error) {
+		g_debug("driver-path sym_link read failure");
+		goto out;
+	}
+	g_free_if_set(tmp_path);
+
+	driver_tokens = g_strsplit(sym_link, "/", 8);
+
+	/* pending the device, the location of driver token will vary, but
+	 * will always be the last token
+	 */
+
+	if (!driver_tokens) {
+		g_debug ("unexpected driver-path format for %s", sym_link);
+		goto out;
+	}
+	while( driver_tokens[idx] )
+		idx++;
+	idx--;
+
+	*mac = g_strdup(mac_from_file[0]);
+	dev_info->bdf = g_strdup(tokens[3]);
+	dev_info->driver = g_strdup(driver_tokens[idx]);
+	dev_info->vd_id = vendor_device_id;
+
+	g_debug("mac: %s, bdf: %s, vendor/device id: %s driver: %s", *mac, dev_info->bdf, dev_info->vd_id, dev_info->driver);
+
+	retval = true;
+out:
+	g_strfreev(mac_from_file);
+	g_strfreev(tokens);
+	g_strfreev(driver_tokens);
+	g_free_if_set(buffer);
+	g_free_if_set(tmp_path);
+
+	return retval;
+}
+
+static void
+hash_table_free_entry(gpointer key, gpointer value, gpointer userdata) 
+{
+	g_free(key);
+	g_free(value);
+}
+
+	
+void
+mac_hash_free (void)
+{
+	/* free each bdf/mac entry */
+	g_hash_table_foreach(mac_hash, hash_table_free_entry, NULL);
+	/* remove table */
+	g_hash_table_destroy(mac_hash);
+}
+
+void
+build_mac_to_bdf_hash (void)
+{
+	gchar *mac = NULL;
+	struct cc_oci_device *d_info = NULL;
+	DIR *d;
+	struct dirent *dir;
+
+	mac_hash = g_hash_table_new(g_str_hash, g_str_equal);
+
+	d = opendir("/sys/class/net");
+	if (!d) {
+		g_debug("Failed to open dir\n");
+		//cleanup and exit TODO
+		goto out;
+	}
+
+	g_debug("build mac to BDF hash");
+	while ((dir = readdir(d)) != NULL) {
+
+		if (! (g_strcmp0 (dir->d_name, ".") &&
+		    g_strcmp0 (dir->d_name, ".."))) {
+			continue;
+		}
+		d_info = g_malloc0 (sizeof(struct cc_oci_device));
+
+		if (get_mac_and_bdf(dir->d_name, d_info, &mac)) {
+			hash_mac_and_store_bdf(mac_hash, mac, d_info);
+		} else {
+			g_free(d_info);
+		}
+	}
+
+	g_debug ("num of mac entries in hash %d", g_hash_table_size(mac_hash));
+out:
+	/* cleanup */
+        closedir(d);
+}
+
 /*!
  * Start the hypervisor as a child process.
  *
@@ -859,7 +1099,10 @@ cc_oci_vm_launch (struct cc_oci_config *config)
 		goto out;
 	}
 
+        build_mac_to_bdf_hash();
+
 	pid = config->vm->pid = fork ();
+
 	if (pid < 0) {
 		g_critical ("failed to create child: %s",
 				strerror (errno));

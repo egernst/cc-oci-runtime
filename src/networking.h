@@ -44,4 +44,5 @@ gboolean cc_oci_network_discover(struct cc_oci_config *const config,
 
 gboolean is_interface_ovs(struct cc_oci_net_if_cfg* if_cfg);
 
+JsonObject * cc_oci_network_devices_to_json (const struct cc_oci_config *config);
 #endif /* _CC_OCI_NETWORKING_H */
