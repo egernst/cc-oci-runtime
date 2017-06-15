@@ -28,7 +28,13 @@
  * in the respective Docker plugins.  VHOSTUSER_PORT_PATH is used to identify this file.
  */
 #define VHOSTUSER_PORT_PATH "/tmp/v_%s"
-#define SRIOV_TEARDOWN_SCRIPT "/usr/bin/cc-sriovdownscript.sh"
+
+
+#define SRIOV_TEARDOWN_SCRIPT	"/usr/bin/cc-sriovdownscript.sh"
+#define PCI_DRIVER_UNBIND_PATH	"/sys/bus/pci/devices/%s/driver/unbind"
+#define PCI_DRIVER_BIND_PATH	"/sys/bus/pci/drivers/%s/bind"
+#define VFIO_RMID_PATH		"/sys/bus/pci/drivers/vfio-pci/remove_id"
+#define VFIO_NEWID_PATH		"/sys/bus/pci/drivers/vfio-pci/new_id"
 
 
 void cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg);

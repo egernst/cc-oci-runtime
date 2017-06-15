@@ -135,10 +135,11 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 		g_debug ("arg: '%s'", *p);
 	}
 
-	if (!g_spawn_sync(NULL, argv, NULL, 0, NULL, NULL, &std_output, &std_err, &exit_status, &error))
+	if (!g_spawn_sync(NULL, argv, NULL, 0, NULL, NULL, &std_output, &std_err, &exit_status, &error)) {
 		g_debug("%s: exit status: %d; error: %s", argv[0], exit_status, error->message);
-	else
+	} else {
 		g_debug("%s: called successfully", argv[0]);
+	}
 
 	retval = true;
 out:
@@ -161,57 +162,55 @@ out:
 gboolean
 cc_oci_bind_host (struct cc_oci_device* d_info)
 {
-	FILE* f;
 	gchar *bind_driver_path = NULL, *unbind_driver_path = NULL;
+	GString *str = NULL;
+	GError *err = NULL;
 	gboolean retval = false;
 
 	if (! d_info) {
-		g_debug("d_info passed in is null");
+		g_debug("bind_host: d_info passed in is null");
 		return false;
 	}
 
-	bind_driver_path = g_strdup_printf("/sys/bus/pci/drivers/%s/bind",
-				d_info->driver);
-	unbind_driver_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind",
-				d_info->bdf);
+	bind_driver_path = g_strdup_printf(PCI_DRIVER_BIND_PATH, d_info->driver);
+	unbind_driver_path = g_strdup_printf(PCI_DRIVER_UNBIND_PATH, d_info->bdf);
 
-	f = fopen(unbind_driver_path, "w");
-	if (!f) {
-		g_debug ("opening %s failed", unbind_driver_path);
-		g_debug ("file open error %d", errno);
+	str = g_string_new(d_info->bdf);
+
+	if (! str) {
+		g_debug("bind_host: failure: can't create string");
 		goto out;
 	}
-	fprintf(f, "%s", d_info->bdf);
-	fclose(f);
 
-	g_debug("bind-host: echo %s > %s", d_info->bdf, unbind_driver_path);
-
-	f = fopen (bind_driver_path, "w");
-	if (!f) {
-		g_debug ("opening %s failed", bind_driver_path);
-		g_debug ("file open error %d", errno);
+	/* unbind from VFIO driver driver */
+	if (!g_file_set_contents(unbind_driver_path, str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s", unbind_driver_path, err->message);
 		goto out;
 	}
-	fprintf(f, "%s", d_info->bdf);
-	fclose(f);
+	g_debug("echo %s > %s", d_info->bdf, unbind_driver_path);
 
-	g_debug("bind-host: echo %s > %s", d_info->bdf, bind_driver_path);
-
-#define VFIO_RMID_PATH "/sys/bus/pci/drivers/vfio-pci/remove_id"
-	f = fopen(VFIO_RMID_PATH, "w");
-	if (!f) {
-		g_debug ("bind_host: failed to open %s - error: %d", VFIO_RMID_PATH, errno);
+	/* bind back to original host driver */
+	if (!g_file_set_contents(bind_driver_path, str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s", bind_driver_path, err->message);
 		goto out;
 	}
-	fprintf(f, "%s", d_info->vd_id);
-	fclose(f);
+	g_debug("echo %s > %s", d_info->bdf, bind_driver_path);
 
-	g_debug("bind_host: echo %s > %s", d_info->vd_id, VFIO_RMID_PATH);
+	/* to prevent new VFs from binding to VFIO-PCI, remove_id */
+	g_string_printf(str, "%s", d_info->vd_id);
+	if (!g_file_set_contents(VFIO_RMID_PATH, str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s", bind_driver_path, err->message);
+		goto out;
+	}
+	g_debug("echo %s > %s", d_info->vd_id, VFIO_RMID_PATH);
 
 	retval = true;
 out:
 	g_free(bind_driver_path);
 	g_free(unbind_driver_path);
+	if (str) {
+		g_string_free(str, true);
+	}
 	return retval;
 }
 
@@ -228,8 +227,9 @@ gboolean
 cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 {
 	struct cc_oci_net_if_cfg *if_cfg = NULL;
-	FILE* f;
-	gchar *device_path = NULL;
+	gchar *bind_driver_path = NULL, *unbind_driver_path = NULL;
+	GString *str = NULL;
+	GError *err = NULL;
 	gboolean retval = false;
 
 	if ( !config )
@@ -244,41 +244,50 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 	if (!if_cfg->vf_based)
 		goto out;
 
-#define VFIO_NEWID_PATH "/sys/bus/pci/drivers/vfio-pci/new_id"
-	f = fopen(VFIO_NEWID_PATH, "w");
-	if (!f) {
-		g_debug ("unbind_host: error opening %s; err: %d", VFIO_NEWID_PATH, errno);
+
+	str = g_string_new(if_cfg->vd_id);
+	if (! str) {
+		g_debug("unbind_host: failure: can't create string");
 		goto out;
 	}
-	fprintf(f, "%s", if_cfg->vd_id);
-	fclose(f);
-	g_debug("unbind_host: echo %s > %s", if_cfg->vd_id, VFIO_NEWID_PATH);
 
-#define DEVICEDRIVER_UNBIND "/sys/bus/pci/devices/%s/driver/unbind"
-	device_path = g_strdup_printf(DEVICEDRIVER_UNBIND, if_cfg->bdf);
-
-	f = fopen(device_path, "w");
-	if (!f) {
-		g_debug ("unbind_host: error opening %s; err: %d", device_path, errno);
+	/* add device ID to vfio-pci driver's bind list */
+	if (!g_file_set_contents(VFIO_NEWID_PATH, str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s",
+				VFIO_NEWID_PATH, err->message);
 		goto out;
 	}
-	fprintf(f, "%s", if_cfg->bdf);
-	fclose(f);
-	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, device_path);
+	g_debug("echo %s > %s", if_cfg->vd_id, VFIO_NEWID_PATH);
 
-#define VFIO_BIND_PATH "/sys/bus/pci/drivers/vfio-pci/bind"
-	f = fopen(VFIO_BIND_PATH, "w");
-	if (!f) {
-		g_debug ("unbind_host: error opening %s; err: %d", VFIO_BIND_PATH, errno);
+	bind_driver_path = g_strdup_printf(PCI_DRIVER_BIND_PATH, "vfio-pci");
+	unbind_driver_path = g_strdup_printf(PCI_DRIVER_UNBIND_PATH, if_cfg->bdf);
+	g_string_printf(str, "%s", if_cfg->bdf);
+
+	/* unbind from host driver */
+	if (!g_file_set_contents(unbind_driver_path,
+				str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s",
+				unbind_driver_path, err->message);
 		goto out;
 	}
-	fprintf(f, "%s", if_cfg->bdf);
-	fclose(f);
-	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, VFIO_BIND_PATH);
+	g_debug("echo %s > %s", if_cfg->bdf, unbind_driver_path);
+
+	/* bind to vfio-pci driver */
+	if (!g_file_set_contents(bind_driver_path,
+				str->str, (gssize)str->len, &err)) {
+		g_debug ("failed to write to %s: err=%s",
+				bind_driver_path, err->message);
+		goto out;
+	}
+	g_debug("echo %s > %s", if_cfg->bdf, bind_driver_path);
 
 	retval = true;
 out:
-	g_free(device_path);
+	g_free(bind_driver_path);
+	g_free(unbind_driver_path);
+	if (str) {
+		g_string_free(str, true);
+	}
 	return retval;
 }
 
@@ -427,7 +436,7 @@ out:
  * \param additional_args Array that will be appended
  */
 static void
-cc_oci_append_network_args(struct cc_oci_config *config, 
+cc_oci_append_network_args(struct cc_oci_config *config,
 			GPtrArray *additional_args)
 {
 	gchar *netdev_params = NULL;
