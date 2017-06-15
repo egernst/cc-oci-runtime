@@ -88,14 +88,14 @@ gboolean
 cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 {
 
-	DIR *d;
-	struct dirent *dir;
+	GDir *dir;
+	GError *error = NULL;
+
 	gboolean retval = false;
 	guint pid;
 	gchar *netns_path = NULL, *iface_name = NULL, *iface_dir_path = NULL, *pid_str = NULL;
-
 	if (! d_info) {
-		g_debug("d_info passed in is null");
+		g_critical("d_info passed in is null");
 		return false;
 	}
 
@@ -105,34 +105,36 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 
 	iface_dir_path = g_strdup_printf("/sys/bus/pci/devices/%s/net", d_info->bdf);
 
-	d = opendir(iface_dir_path);
-	if (!d) {
-		g_debug ("opening net dir on bdf %s failed", d_info->bdf);
+	dir = g_dir_open(iface_dir_path, 0, &error);
+	if (! dir) {
+		/* Failed to open the directory */
+		g_debug("%s", error->message);
 		goto out;
 	}
 
-	while ((dir = readdir(d)) != NULL) {
-		if (g_strcmp0 (dir->d_name, ".") &&
-			g_strcmp0 (dir->d_name, "..")) {
-			break;
-		}
-	}
+	iface_name = (gchar *) g_dir_read_name(dir);
 
-	iface_name = g_strdup(dir->d_name);
+	if (! iface_name) {
+		g_debug("error: %s doesn't contain interface name",iface_dir_path);
+		goto out;
+	}
 
 	/* call tear down script */
 	char * argv[4];
 	gchar *std_output = NULL;
 	gchar *std_err = NULL;
-	GError *error = NULL;
 	int exit_status=0;
 	pid_str = g_strdup_printf("%d", pid);
-	argv[0] = "/usr/bin/cc-sriovdownscript.sh";
+	argv[0] = SRIOV_TEARDOWN_SCRIPT;
 	argv[1] = pid_str;
 	argv[2] = iface_name;
 	argv[3] = NULL;
 
-	g_debug("Calling %s %s %s", argv[0], argv[1], argv[2]);
+	g_debug ("running command:");
+	for (gchar** p = argv; p && *p; p++) {
+		g_debug ("arg: '%s'", *p);
+	}
+
 	if (!g_spawn_sync(NULL, argv, NULL, 0, NULL, NULL, &std_output, &std_err, &exit_status, &error))
 		g_debug("%s: exit status: %d; error: %s", argv[0], exit_status, error->message);
 	else
@@ -144,7 +146,7 @@ out:
 	g_free(iface_name);
 	g_free(netns_path);
 	g_free(pid_str);
-	closedir(d);
+	g_dir_close(dir);
 
 	return retval;
 }

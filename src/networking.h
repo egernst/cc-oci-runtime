@@ -28,6 +28,8 @@
  * in the respective Docker plugins.  VHOSTUSER_PORT_PATH is used to identify this file.
  */
 #define VHOSTUSER_PORT_PATH "/tmp/v_%s"
+#define SRIOV_TEARDOWN_SCRIPT "/usr/bin/cc-sriovdownscript.sh"
+
 
 void cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg);
 
