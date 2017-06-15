@@ -137,12 +137,12 @@ cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg)
 
 	if (if_cfg->ipv4_addrs) {
 		g_slist_free_full(if_cfg->ipv4_addrs,
-                (GDestroyNotify)cc_oci_net_ipv4_free);
+		(GDestroyNotify)cc_oci_net_ipv4_free);
 	}
 
 	if (if_cfg->ipv6_addrs) {
 		g_slist_free_full(if_cfg->ipv6_addrs,
-                (GDestroyNotify)cc_oci_net_ipv6_free);
+		(GDestroyNotify)cc_oci_net_ipv6_free);
 	}
 
 	g_free (if_cfg);
@@ -412,7 +412,7 @@ cc_oci_network_create(const struct cc_oci_config *const config,
 		 * interface, we do not need to setup anything -- skip tap
 		 * setup.
 		 */
-                if (check_vf_based_iface(if_cfg))
+		if (check_vf_based_iface(if_cfg))
 			continue;
 
 		if (!cc_oci_tap_create(if_cfg->tap_device)) {
@@ -466,25 +466,25 @@ out:
 JsonObject *
 cc_oci_network_devices_to_json (const struct cc_oci_config *config)
 {
-        JsonObject *device = NULL;
-        guint i;
-        struct cc_oci_net_if_cfg *if_cfg = NULL;
+	JsonObject *device = NULL;
+	guint i;
+	struct cc_oci_net_if_cfg *if_cfg = NULL;
 
-        for (i=0; i < g_slist_length(config->net.interfaces); i++) {
-                if_cfg = (struct cc_oci_net_if_cfg *)
-                        g_slist_nth_data(config->net.interfaces, i);
+	for (i=0; i < g_slist_length(config->net.interfaces); i++) {
+		if_cfg = (struct cc_oci_net_if_cfg *)
+		        g_slist_nth_data(config->net.interfaces, i);
 
-                if (if_cfg->vf_based) {
-                        g_debug("interface %s is vf based vf: bdf: %s, vendor/device id: %s, driver: %s",
+		if (if_cfg->vf_based) {
+		        g_debug("interface %s is vf based vf: bdf: %s, vendor/device id: %s, driver: %s",
 				if_cfg->ifname, if_cfg->bdf,
 				if_cfg->vd_id, if_cfg->device_driver);
-                        device = json_object_new ();
-                        json_object_set_string_member (device, "bdf", if_cfg->bdf);
-                        json_object_set_string_member (device, "driver", if_cfg->device_driver);
-                        json_object_set_string_member (device, "vd_id", if_cfg->vd_id);
-                }
-        }
-        return device;
+		        device = json_object_new ();
+		        json_object_set_string_member (device, "bdf", if_cfg->bdf);
+		        json_object_set_string_member (device, "driver", if_cfg->device_driver);
+		        json_object_set_string_member (device, "vd_id", if_cfg->vd_id);
+		}
+	}
+	return device;
 }
 
 /*!
@@ -526,12 +526,12 @@ cc_net_get_ip_address(const gint family, const void *const sin_addr)
 static guint
 prefix(guint8 *val, guint size)
 {
-        guint8 *addr = val;
-        guint byte, bit, plen = 0;
+	guint8 *addr = val;
+	guint byte, bit, plen = 0;
 
-        for (byte = 0; byte < size; byte++, plen += 8) {
-                if (addr[byte] != 0xff) {
-                        break;
+	for (byte = 0; byte < size; byte++, plen += 8) {
+		if (addr[byte] != 0xff) {
+		        break;
 		}
 	}
 
@@ -540,24 +540,24 @@ prefix(guint8 *val, guint size)
 	}
 
 	for (bit = 7; bit != 0; bit--, plen++) {
-                if (!(addr[byte] & (1 << bit))) {
-                        break;
+		if (!(addr[byte] & (1 << bit))) {
+		        break;
 		}
 	}
 
 	/* Handle errors */
-        for (; bit != 0; bit--) {
-                if (addr[byte] & (1 << bit)) {
-                        return(0);
+	for (; bit != 0; bit--) {
+		if (addr[byte] & (1 << bit)) {
+		        return(0);
 		}
 	}
-        byte++;
-        for (; byte < size; byte++) {
-                if (addr[byte]) {
-                        return(0);
+	byte++;
+	for (; byte < size; byte++) {
+		if (addr[byte]) {
+		        return(0);
 		}
 	}
-        return (plen);
+	return (plen);
 }
 
 /*!
@@ -669,15 +669,15 @@ get_iptable_rules(struct cc_oci_config *config)
 
 	g_debug("Running command : %s", cmd);
 	ret = g_spawn_sync (NULL,
-              args,
-              NULL,
-              G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL,
-              NULL,
-              NULL,
-              &(config->net.iptable_rules),
-              NULL,
-              &exit_status,
-              &error);
+	      args,
+	      NULL,
+	      G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL,
+	      NULL,
+	      NULL,
+	      &(config->net.iptable_rules),
+	      NULL,
+	      &exit_status,
+	      &error);
 
 	if ( !ret || exit_status) {
 		if (! ret) {
@@ -731,15 +731,15 @@ purge_iptable_rules(void)
 	}
 
 	ret = g_spawn_sync (NULL,
-              args,
-              NULL,
-              G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              &exit_status,
-              &error);
+	      args,
+	      NULL,
+	      G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+	      NULL,
+	      NULL,
+	      NULL,
+	      NULL,
+	      &exit_status,
+	      &error);
 
 	if ( !ret || exit_status) {
 		if (! ret) {

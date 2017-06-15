@@ -273,7 +273,7 @@ cc_oci_child_watcher (GPid pid, gint status,
  * */
 private gboolean
 cc_run_hook(struct oci_cfg_hook* hook, const gchar* state,
-             gsize state_length)
+		gsize state_length)
 {
 	int stdin_pipe[2]        = { -1, -1 };
 	int pipe_child_error[2]  = { -1, -1 };
@@ -795,7 +795,7 @@ GHashTable* mac_hash;
 static void
 hash_mac_and_store_bdf(GHashTable* hash, gpointer mac, gpointer bdf)
 {
-       g_hash_table_insert(hash, mac, bdf);
+	g_hash_table_insert(hash, mac, bdf);
 }
 
 /*!
@@ -1015,7 +1015,7 @@ build_mac_to_bdf_hash (void)
 	g_debug ("num of mac entries in hash %d", g_hash_table_size(mac_hash));
 out:
 	/* cleanup */
-        closedir(d);
+	closedir(d);
 }
 
 /*!
@@ -1067,7 +1067,7 @@ cc_oci_vm_launch (struct cc_oci_config *config)
 		goto out;
 	}
 
-        additional_args = g_ptr_array_new_with_free_func(cc_free_pointer);
+	additional_args = g_ptr_array_new_with_free_func(cc_free_pointer);
 
 	config->state.status = OCI_STATUS_CREATED;
 
@@ -1099,7 +1099,7 @@ cc_oci_vm_launch (struct cc_oci_config *config)
 		goto out;
 	}
 
-        build_mac_to_bdf_hash();
+	build_mac_to_bdf_hash();
 
 	pid = config->vm->pid = fork ();
 
@@ -1535,7 +1535,7 @@ out:
  */
 gboolean
 cc_run_hooks(GSList* hooks, const gchar* state_file_path,
-              gboolean stop_on_failure) {
+		gboolean stop_on_failure) {
 	GSList* i = NULL;
 	struct oci_cfg_hook* hook = NULL;
 	gchar* container_state = NULL;

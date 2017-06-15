@@ -156,7 +156,7 @@ handle_command_stop (const struct subcommand *sub,
 	gboolean           ret;
 	GNode*             root = NULL;
 	gchar             *cgroup_dir = NULL;
-        guint		  index;
+	guint		  index;
 
 	g_assert (sub);
 	g_assert (config);
@@ -205,12 +205,12 @@ handle_command_stop (const struct subcommand *sub,
 	 * If found, bind it back to the original host driver and change the
 	 * interface back to the child process' namespace
 	 */
-        if (state->devices) {
-                for (index=0; index<g_slist_length(state->devices); index++) {
+	if (state->devices) {
+		for (index=0; index<g_slist_length(state->devices); index++) {
 			struct cc_oci_device* device = (struct cc_oci_device *)
 				g_slist_nth_data(state->devices, index);
 
-                        if (!cc_oci_bind_host(device))
+			if (!cc_oci_bind_host(device))
 				g_debug("failed to bind device %s back to host", device->bdf);
 
 			/* brute-force hacks for changing the interface to
@@ -218,8 +218,8 @@ handle_command_stop (const struct subcommand *sub,
 			 */
 			if (!cc_oci_switch_iface_to_container(device, state->pid))
 				g_debug ("failed to switch device %s to container",device->bdf);
-                }
-        }
+		}
+}
 
 	if (! cc_oci_config_update (config, state)) {
 		goto out;

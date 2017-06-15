@@ -58,22 +58,22 @@ private gchar *defaultsdir = DEFAULTSDIR;
 static gboolean
 config_net_check_vf(struct cc_oci_config *config, guint index)
 {
-        struct cc_oci_net_if_cfg *if_cfg = NULL;
+	struct cc_oci_net_if_cfg *if_cfg = NULL;
 
 	if (! config) {
 		g_critical ("config passed is null");
 		return false;
 	}
 
-        if_cfg = (struct cc_oci_net_if_cfg *)
-                g_slist_nth_data(config->net.interfaces, index);
+	if_cfg = (struct cc_oci_net_if_cfg *)
+		g_slist_nth_data(config->net.interfaces, index);
 
-        if (!if_cfg) {
+	if (!if_cfg) {
 		g_critical ("no interface at index %d", index);
-                return false;
-        }
+		return false;
+	}
 
-        return if_cfg->vf_based;
+	return if_cfg->vf_based;
 }
 
 /*!
@@ -91,7 +91,7 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 	DIR *d;
 	struct dirent *dir;
 	gboolean retval = false;
-        guint pid;
+	guint pid;
 	gchar *netns_path = NULL, *iface_name = NULL, *iface_dir_path = NULL, *pid_str = NULL;
 
 	if (! d_info) {
@@ -101,24 +101,24 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 
 	pid = (unsigned) g_pid;
 
-        netns_path = g_strdup_printf("/proc/%d/ns/net", pid);
+	netns_path = g_strdup_printf("/proc/%d/ns/net", pid);
 
-        iface_dir_path = g_strdup_printf("/sys/bus/pci/devices/%s/net", d_info->bdf);
+	iface_dir_path = g_strdup_printf("/sys/bus/pci/devices/%s/net", d_info->bdf);
 
 	d = opendir(iface_dir_path);
-        if (!d) {
-                g_debug ("opening net dir on bdf %s failed", d_info->bdf);
+	if (!d) {
+		g_debug ("opening net dir on bdf %s failed", d_info->bdf);
 		goto out;
-        }
+	}
 
-        while ((dir = readdir(d)) != NULL) {
-                if (g_strcmp0 (dir->d_name, ".") &&
-                        g_strcmp0 (dir->d_name, "..")) {
-                        break;
-                }
-        }
+	while ((dir = readdir(d)) != NULL) {
+		if (g_strcmp0 (dir->d_name, ".") &&
+			g_strcmp0 (dir->d_name, "..")) {
+			break;
+		}
+	}
 
-        iface_name = g_strdup(dir->d_name);
+	iface_name = g_strdup(dir->d_name);
 
 	/* call tear down script */
 	char * argv[4];
@@ -138,7 +138,7 @@ cc_oci_switch_iface_to_container (struct cc_oci_device* d_info, GPid g_pid)
 	else
 		g_debug("%s: called successfully", argv[0]);
 
-        retval = true;
+	retval = true;
 out:
 	g_free(iface_dir_path);
 	g_free(iface_name);
@@ -173,12 +173,12 @@ cc_oci_bind_host (struct cc_oci_device* d_info)
 	unbind_driver_path = g_strdup_printf("/sys/bus/pci/devices/%s/driver/unbind",
 				d_info->bdf);
 
-        f = fopen(unbind_driver_path, "w");
+	f = fopen(unbind_driver_path, "w");
 	if (!f) {
 		g_debug ("opening %s failed", unbind_driver_path);
 		g_debug ("file open error %d", errno);
 		goto out;
-        }
+	}
 	fprintf(f, "%s", d_info->bdf);
 	fclose(f);
 
@@ -210,7 +210,7 @@ cc_oci_bind_host (struct cc_oci_device* d_info)
 out:
 	g_free(bind_driver_path);
 	g_free(unbind_driver_path);
-        return retval;
+	return retval;
 }
 
 /*!
@@ -266,10 +266,10 @@ cc_oci_unbind_host(struct cc_oci_config *config, guint index)
 
 #define VFIO_BIND_PATH "/sys/bus/pci/drivers/vfio-pci/bind"
 	f = fopen(VFIO_BIND_PATH, "w");
-        if (!f) {
+	if (!f) {
 		g_debug ("unbind_host: error opening %s; err: %d", VFIO_BIND_PATH, errno);
 		goto out;
-        }
+	}
 	fprintf(f, "%s", if_cfg->bdf);
 	fclose(f);
 	g_debug("unbind_host: echo %s > %s", if_cfg->bdf, VFIO_BIND_PATH);
@@ -311,8 +311,8 @@ out:
 static gchar *
 cc_oci_expand_net_cmdline(struct cc_oci_config *config) {
 	/* www.kernel.org/doc/Documentation/filesystems/nfs/nfsroot.txt
-        * ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:
-         * <device>:<autoconf>:<dns0-ip>:<dns1-ip>
+	 * ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:
+	 * <device>:<autoconf>:<dns0-ip>:<dns1-ip>
 	 */
 
 	if (! config) {
@@ -497,7 +497,7 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 			g_ptr_array_add(additional_args, g_strdup("-numa"));
 			g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_NUMA));
 		}
-        }
+	}
 
 	/* the mac/bdf hash is no longer necessary, since networking is now setup */
 
