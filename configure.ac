@@ -323,7 +323,7 @@ AS_IF([test x"$with_tests_bundle_path" != x""],
 DEFAULT_KERNEL_PATH=$localstatedir/lib/$PACKAGE_NAME/data/kernel/vmlinuz.container
 
 # Verify container kernel is installed by package.
-OBS_PKG_KERNEL_PATH="/usr/share/clear-containers/vmlinux.container"
+OBS_PKG_KERNEL_PATH="/usr/share/clear-containers/vmlinuz.container"
 if  [ ! -f "$DEFAULT_KERNEL_PATH" -a -f "$OBS_PKG_KERNEL_PATH" ] ; then
 	DEFAULT_KERNEL_PATH="$OBS_PKG_KERNEL_PATH"
 	AC_MSG_WARN($DEFAULT_KERNEL_PATH detected using as default kernel path)
